@@ -5,3 +5,4 @@ authors = ["Ihsahn <ihsahn@users.noreply.github.com>"]
 
 [dependencies]
 reqwest = "0.9.13"
+regex = "1.1.5"

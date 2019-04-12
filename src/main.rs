@@ -1,5 +1,7 @@
 extern crate reqwest;
 
+use reqwest::Client;
+
 fn main() {
     let user = "username";
     let passwd = "password";
@@ -11,7 +13,7 @@ fn main() {
 }
 
 fn get_page(url: &str, user: &str, passwd: &str) -> String {
-    let client = reqwest::Client::new();
+    let client = Client::new();
     let mut rsp = client
         .get(url)
         .basic_auth(user, Some(passwd))
