@@ -1,0 +1,6 @@
+[package]
+name = "findbuild"
+version = "0.1.0"
+authors = ["Ihsahn <ihsahn@users.noreply.github.com>"]
+
+[dependencies]
