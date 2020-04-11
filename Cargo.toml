@@ -3,6 +3,7 @@ name = "findbuild"
 version = "0.2.0"
 description = "Utility to find package in http hosted build repo"
 authors = ["Ihsahn <ihsahn@users.noreply.github.com>"]
+edition = "2018"
 
 [dependencies]
 reqwest = "0.9.13"

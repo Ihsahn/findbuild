@@ -9,8 +9,9 @@ use std::io;
 use std::env;
 use clap::{crate_authors, crate_description, crate_name, crate_version, Arg, App};
 use std::process::exit;
+use std::error::Error;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let arguments = App::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
@@ -62,7 +63,11 @@ fn main() {
             None => { break; }
             Some(pattern) => {
                 println!("looking for {} at {}", pattern, path);
-                last_part = get_page_and_find_matching(&user, &passwd, pattern, &path);
+                let part = get_page_and_find_matching(&user, &passwd, pattern, &path)?;
+                if part.is_none() {
+                    return Err("Pattern not found in specified url".into());
+                }
+                last_part = part.unwrap();
                 path = format!("{}/{}", path, last_part.as_str());
             }
         }
@@ -71,38 +76,78 @@ fn main() {
     let package_name = last_part;
 
     println!("Full url: {:?}", specific_build_url);
-    let mut package_response = get(specific_build_url.as_str(), &user, &passwd);
-    let mut out = File::create(package_name).unwrap();
-    io::copy(&mut package_response, &mut out).unwrap();
+    let mut package_response = get(specific_build_url.as_str(), &user, &passwd)?;
+    let mut out = File::create(package_name)?;
+    let _ = io::copy(&mut package_response, &mut out)?;
+    Ok(())
 }
 
-fn get_page_and_find_matching(user: &str, passwd: &str, pattern: &str, path: &str) -> String {
-    let platform_page = get_page(path, user, passwd);
-    let build_package_name = find_last_matching_url(&platform_page, pattern);
-    build_package_name.to_string()
+fn get_page_and_find_matching(user: &str, passwd: &str, pattern: &str, path: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let platform_page = get_page(path, user, passwd)?;
+    let build_package_name = find_last_matching_url(&platform_page, pattern)?;
+    let result = build_package_name.map(|v| v.to_string());
+    Ok(result)
 }
 
-fn get(url: &str, user: &str, passwd: &str) -> Response {
+fn get(url: &str, user: &str, passwd: &str) -> Result<Response,  reqwest::Error> {
     let client = Client::new();
     let rsp = client
         .get(url)
         .basic_auth(user, Some(passwd))
-        .send()
-        .unwrap();
-    rsp
+        .send()?;
+    Ok(rsp)
 }
 
-fn get_page(url: &str, user: &str, passwd: &str) -> String {
-    let mut rsp = get(url, user, passwd);
-    let body = rsp.text().unwrap();
-    body
+fn get_page(url: &str, user: &str, passwd: &str) -> Result<String, reqwest::Error> {
+    let mut rsp = get(url, user, passwd)?;
+    let body = rsp.text()?;
+    Ok(body)
 }
 
-fn find_last_matching_url<'a>(page: &'a String, version_pattern: &str) -> &'a str {
-    let regexp = Regex::new(version_pattern).unwrap();
+fn find_last_matching_url<'a>(page: &'a String, version_pattern: &str) -> Result<Option<&'a str>, regex::Error> {
+    let regexp = Regex::new(version_pattern)?;
     let value = regexp.find_iter(page.as_str())
-        .last()
-        .unwrap()
-        .as_str();
-    value
+        .last();
+     match value {
+         None => Ok(None),
+         Some(s) => Ok(Some(s.as_str()))
+     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn find_last_matching_url_invalid_regexp() {
+        let page = r#"empty page"#;
+        let page = String::from(page);
+        let pattern ="bd+)";
+        let result = super::find_last_matching_url(&page, pattern);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn find_last_matching_url_empty_page() {
+        let page = r#"empty page"#;
+        let page = String::from(page);
+        let pattern ="(b\\d+)";
+        let result = super::find_last_matching_url(&page, pattern);
+
+        assert_eq!(None, result.unwrap());
+    }
+
+    #[test]
+    fn find_last_matching_url_match_found() {
+        let page = r#"<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\"><html>
+        \n<title>Directory listing for /builds/develop//b3/linux64/</title>\n<body>\n<h2>Directory listing for
+        /builds/develop//b3/linux64/</h2>\n<hr>\n<ul>\n<li><a href=\"findbuild.deb\">findbuild.deb</a>\n<li><a href=\"findbuild.rpm\">
+        findbuild.rpm</a>\n<li><a href=\"findbuild_2019-09-28.snap\">findbuild_2019-09-28.snap</a>\n</ul>\n<hr>\n</body>\n</html>\n"#;
+        let page = String::from(page);
+        let pattern ="(findbuild_.*?snap)";
+        let result = super::find_last_matching_url(&page, pattern);
+
+        assert_eq!("findbuild_2019-09-28.snap", result.unwrap().unwrap());
+    }
+
 }
